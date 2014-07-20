@@ -70,6 +70,8 @@ void* _org_rehabman_dontstrip_[] =
 #define kMacroTranslation                   "Macro Translation"
 #define kMaxMacroTime                       "MaximumMacroTime"
 
+#define kMDTG                               "MDTG"  // HID F-key mode toggle for ACPI
+
 // Definitions for Macro Inversion data format
 //REVIEW: This should really be defined as some sort of structure
 #define kIgnoreBytes            2 // first two bytes of macro data are ignored (always 0xffff)
@@ -829,6 +831,16 @@ void ApplePS2Keyboard::setParamPropertiesGated(OSDictionary * dict)
         {
             _fkeymode = num->unsigned32BitValue();
             setProperty(kHIDFKeyMode, _fkeymode, 32);
+            // if PS2K implements "MDTG" then, we can notify it of changes to HIDFKeyMode
+            // (allows separation of actions for each keyboard mode inside EC queries in ACPI)
+            if (_provider)
+            {
+                if (OSNumber* mod = OSNumber::withNumber(_fkeymode, 32))
+                {
+                    _provider->evaluateObject(kMDTG, NULL, (OSObject**)&mod, 1);
+                    mod->release();
+                }
+            }
         }
         if (oldfkeymode != _fkeymode)
         {
@@ -1720,6 +1732,15 @@ bool ApplePS2Keyboard::dispatchKeyboardEventWithPacket(const UInt8* packet)
                         {
                             service->setProperties(dict);
                             dict->release();
+                        }
+                        // notify ACPI that we have switched keymode
+                        if (_provider)
+                        {
+                            if (OSNumber* mod = OSNumber::withNumber(_fkeymode, 32))
+                            {
+                                _provider->evaluateObject(kMDTG, NULL, (OSObject**)&mod, 1);
+                                mod->release();
+                            }
                         }
                     }
                     OSSafeRelease(num);
